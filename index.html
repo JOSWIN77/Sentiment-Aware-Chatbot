@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentiment Chatbot</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',sans-serif;background:#f0f4f8;display:flex;justify-content:center;align-items:center;height:100vh}
+  .chat-container{width:420px;height:620px;background:#fff;border-radius:20px;box-shadow:0 8px 32px rgba(0,0,0,.12);display:flex;flex-direction:column;overflow:hidden}
+  .header{padding:18px 20px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;display:flex;align-items:center;gap:12px}
+  .avatar{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-size:22px}
+  .header-info h2{font-size:16px;font-weight:600}
+  .header-info p{font-size:12px;opacity:.8}
+  .sentiment-badge{margin-left:auto;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(255,255,255,.2);transition:.3s}
+  .messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+  .message{max-width:80%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;animation:fadeIn .3s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .bot{background:#f1f3f5;color:#333;border-bottom-left-radius:4px;align-self:flex-start}
+  .user{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border-bottom-right-radius:4px;align-self:flex-end}
+  .sentiment-indicator{font-size:11px;margin-top:4px;opacity:.7;text-align:right}
+  .input-area{padding:14px 16px;border-top:1px solid #eee;display:flex;gap:8px}
+  .input-area input{flex:1;padding:10px 14px;border:2px solid #e2e8f0;border-radius:24px;font-size:14px;outline:none;transition:.2s}
+  .input-area input:focus{border-color:#667eea}
+  .input-area button{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);border:none;color:#fff;font-size:18px;cursor:pointer;transition:.2s}
+  .input-area button:hover{transform:scale(1.08)}
+  .typing{display:none;align-self:flex-start;background:#f1f3f5;padding:10px 14px;border-radius:18px;border-bottom-left-radius:4px}
+  .typing span{display:inline-block;width:7px;height:7px;border-radius:50%;background:#999;animation:bounce .9s infinite;margin:0 2px}
+  .typing span:nth-child(2){animation-delay:.15s}
+  .typing span:nth-child(3){animation-delay:.3s}
+  @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+  .emotion-bar{padding:8px 16px;background:#fafafa;border-top:1px solid #eee;display:flex;gap:6px;font-size:11px;color:#666}
+  .emotion-bar span{padding:3px 8px;border-radius:12px;background:#e2e8f0;cursor:default}
+  .emotion-bar .active-pos{background:#d4edda;color:#155724}
+  .emotion-bar .active-neg{background:#f8d7da;color:#721c24}
+  .emotion-bar .active-neu{background:#d1ecf1;color:#0c5460}
+</style>
+</head>
+<body>
+<div class="chat-container">
+  <div class="header">
+    <div class="avatar">🤖</div>
+    <div class="header-info">
+      <h2>Support Assistant</h2>
+      <p>Sentiment-Aware Chatbot</p>
+    </div>
+    <div class="sentiment-badge" id="sentimentBadge">😐 Neutral</div>
+  </div>
+
+  <div class="messages" id="messages">
+    <div class="message bot">👋 Hi! I'm here to help you. How are you feeling today? Feel free to share anything!</div>
+  </div>
+
+  <div class="typing" id="typing">
+    <span></span><span></span><span></span>
+  </div>
+
+  <div class="emotion-bar">
+    <span>Detected:</span>
+    <span id="posTag">😊 Positive</span>
+    <span id="neuTag" class="active-neu">😐 Neutral</span>
+    <span id="negTag">😞 Negative</span>
+  </div>
+
+  <div class="input-area">
+    <input type="text" id="userInput" placeholder="Type your message..." autocomplete="off"/>
+    <button onclick="sendMessage()">➤</button>
+  </div>
+</div>
+
+<script>
+const POSITIVE_WORDS = ['good','great','amazing','love','happy','excellent','wonderful','fantastic','awesome','best','thank','thanks','perfect','brilliant','glad','joy','excited','pleased','delighted','superb','outstanding','incredible'];
+const NEGATIVE_WORDS = ['bad','terrible','awful','hate','angry','worst','horrible','disgusting','upset','frustrated','annoyed','disappointed','useless','broken','error','problem','issue','fail','failed','wrong','never','cant','cannot','refuse','slow','poor'];
+const NEGATIVE_INTENSIFIERS = ['very','extremely','really','so','absolutely','completely','totally'];
+
+function analyzeSentiment(text){
+  const words = text.toLowerCase().replace(/[^\w\s]/g,'').split(/\s+/);
+  let score = 0;
+  for(let i=0;i<words.length;i++){
+    const w = words[i];
+    const multiplier = (i>0 && NEGATIVE_INTENSIFIERS.includes(words[i-1])) ? 1.5 : 1;
+    if(POSITIVE_WORDS.includes(w)) score += 1*multiplier;
+    if(NEGATIVE_WORDS.includes(w)) score -= 1*multiplier;
+  }
+  // negation check
+  if(/\b(not|no|never|don't|doesn't|isn't|wasn't|won't)\b/i.test(text)) score = -Math.abs(score)||(-0.5);
+  return score > 0.4 ? 'positive' : score < -0.4 ? 'negative' : 'neutral';
+}
+
+const RESPONSES = {
+  positive:{
+    greet:["That's wonderful to hear! 😊 How can I make your day even better?","You sound great! What can I help you with today? 🌟","Love the energy! What can I do for you? ✨"],
+    thanks:["You're very welcome! 🙏 Anything else I can help you with?","Happy to help! 😊 Is there anything else you need?","My pleasure! Let me know if there's anything more I can do! 🌟"],
+    general:["Glad you're having a positive experience! 🎉 What would you like help with?","Awesome! Let me know how I can assist you further. 😊","That's great! I'm here to help with anything you need. ✨"]
+  },
+  negative:{
+    frustration:["I'm really sorry you're experiencing this. 😔 Let me help you resolve it right away.","I completely understand your frustration. Let's fix this together! 🔧","I sincerely apologize for the trouble. Tell me more and I'll do my best to help."],
+    complaint:["I hear you, and I take this seriously. 🙏 Let me look into this immediately.","I'm sorry this happened. Your feedback is important and I want to make it right.","That's not the experience we want you to have. Let me escalate this for you."],
+    general:["I'm sorry to hear you're feeling this way. 😟 I'm here for you — what can I do to help?","I understand things aren't going well. Let's work through this together. 💪","I'm genuinely sorry. Please tell me what happened and I'll do my best to fix it."]
+  },
+  neutral:{
+    question:["Great question! Let me help you with that. 📋","Sure, I'd be happy to assist! Could you give me a bit more detail?","Of course! Here's what I can tell you:"],
+    general:["Thanks for reaching out! How can I assist you today? 😊","I'm here to help! What would you like to know?","Got it! Let me help you with that right away."]
+  }
+};
+
+function getResponse(text, sentiment){
+  const lower = text.toLowerCase();
+  const r = RESPONSES[sentiment];
+  if(sentiment==='positive'){
+    if(/thank/i.test(lower)) return pick(r.thanks);
+    if(/hi|hello|hey/i.test(lower)) return pick(r.greet);
+    return pick(r.general);
+  }
+  if(sentiment==='negative'){
+    if(/frustrat|annoy|angry|upset/i.test(lower)) return pick(r.frustration);
+    if(/complain|problem|issue|broken|error|bad/i.test(lower)) return pick(r.complaint);
+    return pick(r.general);
+  }
+  if(/\?/.test(text)||/what|how|when|where|why|who|can you|could you/i.test(lower)) return pick(r.question);
+  return pick(r.general);
+}
+
+function pick(arr){return arr[Math.floor(Math.random()*arr.length)]}
+
+function updateUI(sentiment){
+  const badge = document.getElementById('sentimentBadge');
+  const pos = document.getElementById('posTag');
+  const neu = document.getElementById('neuTag');
+  const neg = document.getElementById('negTag');
+  pos.className=''; neu.className=''; neg.className='';
+  if(sentiment==='positive'){
+    badge.textContent='😊 Positive'; badge.style.background='rgba(40,167,69,.3)';
+    pos.className='active-pos';
+  } else if(sentiment==='negative'){
+    badge.textContent='😞 Negative'; badge.style.background='rgba(220,53,69,.3)';
+    neg.className='active-neg';
+  } else {
+    badge.textContent='😐 Neutral'; badge.style.background='rgba(255,255,255,.2)';
+    neu.className='active-neu';
+  }
+}
+
+function addMessage(text, sender, sentiment=''){
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className=`message ${sender}`;
+  div.innerHTML = text;
+  if(sender==='user' && sentiment){
+    const ind = document.createElement('div');
+    ind.className='sentiment-indicator';
+    ind.textContent = sentiment==='positive'?'😊 Positive detected':sentiment==='negative'?'😞 Negative detected':'😐 Neutral detected';
+    div.appendChild(ind);
+  }
+  msgs.appendChild(div);
+  msgs.scrollTop=msgs.scrollHeight;
+}
+
+function showTyping(show){
+  document.getElementById('typing').style.display=show?'block':'none';
+  if(show) document.getElementById('messages').scrollTop=9999;
+}
+
+function sendMessage(){
+  const input = document.getElementById('userInput');
+  const text = input.value.trim();
+  if(!text) return;
+  input.value='';
+
+  const sentiment = analyzeSentiment(text);
+  addMessage(text,'user',sentiment);
+  updateUI(sentiment);
+  showTyping(true);
+
+  setTimeout(()=>{
+    showTyping(false);
+    const reply = getResponse(text, sentiment);
+    addMessage(reply,'bot');
+  }, 800+Math.random()*600);
+}
+
+document.getElementById('userInput').addEventListener('keydown',e=>{if(e.key==='Enter') sendMessage()});
+</script>
+</body>
+</html>
